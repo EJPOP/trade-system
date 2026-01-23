@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="top.tradesystem.krx.repository.KrxTickerMasterMapper">
+
+    <insert id="upsertBatch">
+        INSERT INTO krx_ticker_master
+        (code, isin, name_kr, name_kr_abbr, name_en, market, sec_group, kind_stock_cert, list_date, par_value, list_shares)
+        VALUES
+        <foreach collection="rows" item="r" separator=",">
+            (#{r.code}, #{r.isin}, #{r.nameKr}, #{r.nameKrAbbr}, #{r.nameEn}, #{r.market},
+            #{r.secGroup}, #{r.kindStockCert}, #{r.listDate}, #{r.parValue}, #{r.listShares})
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+        isin = VALUES(isin),
+        name_kr = VALUES(name_kr),
+        name_kr_abbr = VALUES(name_kr_abbr),
+        name_en = VALUES(name_en),
+        market = VALUES(market),
+        sec_group = VALUES(sec_group),
+        kind_stock_cert = VALUES(kind_stock_cert),
+        list_date = VALUES(list_date),
+        par_value = VALUES(par_value),
+        list_shares = VALUES(list_shares)
+    </insert>
+
+    <select id="findByMarket" resultType="top.tradesystem.krx.dto.KrxTickerMasterRow">
+        SELECT
+            code      AS code,
+            isin      AS isin,
+            name_kr   AS nameKr,
+            name_kr_abbr AS nameKrAbbr,
+            name_en   AS nameEn,
+            market    AS market,
+            sec_group AS secGroup,
+            kind_stock_cert AS kindStockCert,
+            list_date AS listDate,
+            par_value AS parValue,
+            list_shares AS listShares
+        FROM krx_ticker_master
+        WHERE market = #{market}
+        ORDER BY code
+    </select>
+
+    <select id="findByCode"
+            parameterType="string"
+            resultType="top.tradesystem.krx.dto.KrxTickerMasterRow">
+        SELECT
+            code            AS code,
+            isin            AS isin,
+            name_kr         AS nameKr,
+            name_kr_abbr    AS nameKrAbbr,
+            name_en         AS nameEn,
+            market          AS market,
+            sec_group       AS secGroup,
+            kind_stock_cert AS kindStockCert,
+            list_date       AS listDate,
+            par_value       AS parValue,
+            list_shares     AS listShares
+        FROM krx_ticker_master
+        WHERE code = #{code}
+    </select>
+
+</mapper>

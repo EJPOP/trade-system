@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="top.tradesystem.krx.repository.KrxDailyTradeMapper">
+
+    <select id="findByBasDdAndCode" resultType="top.tradesystem.krx.dto.KrxDailyTradeRow">
+        SELECT
+        bas_dd           AS basDd,
+        isu_cd           AS isuCd,
+        isu_nm           AS isuNm,
+        mkt_nm           AS mktNm,
+        sect_tp_nm       AS sectTpNm,
+        tdd_clsprc       AS tddClsprc,
+        cmpprevdd_prc    AS cmpprevddPrc,
+        fluc_rt          AS flucRt,
+        tdd_opnprc       AS tddOpnprc,
+        tdd_hgprc        AS tddHgprc,
+        tdd_lwprc        AS tddLwprc,
+        acc_trdvol       AS accTrdvol,
+        acc_trdval       AS accTrdval,
+        mktcap           AS mktcap,
+        list_shrs        AS listShrs
+        FROM krx_daily_trade
+        WHERE bas_dd = #{basDd}
+        AND isu_cd = #{code}
+        LIMIT 1
+    </select>
+
+    <select id="findByBasDdAndMarket" resultType="top.tradesystem.krx.dto.KrxDailyTradeRow">
+        SELECT
+        bas_dd           AS basDd,
+        isu_cd           AS isuCd,
+        isu_nm           AS isuNm,
+        mkt_nm           AS mktNm,
+        sect_tp_nm       AS sectTpNm,
+        tdd_clsprc       AS tddClsprc,
+        cmpprevdd_prc    AS cmpprevddPrc,
+        fluc_rt          AS flucRt,
+        tdd_opnprc       AS tddOpnprc,
+        tdd_hgprc        AS tddHgprc,
+        tdd_lwprc        AS tddLwprc,
+        acc_trdvol       AS accTrdvol,
+        acc_trdval       AS accTrdval,
+        mktcap           AS mktcap,
+        list_shrs        AS listShrs
+        FROM krx_daily_trade
+        WHERE bas_dd = #{basDd}
+        AND mkt_nm = #{market}
+        ORDER BY CAST(acc_trdval AS DECIMAL(30,0)) DESC
+    </select>
+
+    <insert id="upsertBatch">
+        INSERT INTO krx_daily_trade (
+        bas_dd, isu_cd, isu_nm, mkt_nm, sect_tp_nm,
+        tdd_clsprc, cmpprevdd_prc, fluc_rt,
+        tdd_opnprc, tdd_hgprc, tdd_lwprc,
+        acc_trdvol, acc_trdval, mktcap, list_shrs
+        )
+        VALUES
+        <foreach collection="rows" item="r" separator=",">
+            (
+            #{r.basDd}, #{r.isuCd}, #{r.isuNm}, #{r.mktNm}, #{r.sectTpNm},
+            #{r.tddClsprc}, #{r.cmpprevddPrc}, #{r.flucRt},
+            #{r.tddOpnprc}, #{r.tddHgprc}, #{r.tddLwprc},
+            #{r.accTrdvol}, #{r.accTrdval}, #{r.mktcap}, #{r.listShrs}
+            )
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+        isu_nm = VALUES(isu_nm),
+        mkt_nm = VALUES(mkt_nm),
+        sect_tp_nm = VALUES(sect_tp_nm),
+        tdd_clsprc = VALUES(tdd_clsprc),
+        cmpprevdd_prc = VALUES(cmpprevdd_prc),
+        fluc_rt = VALUES(fluc_rt),
+        tdd_opnprc = VALUES(tdd_opnprc),
+        tdd_hgprc = VALUES(tdd_hgprc),
+        tdd_lwprc = VALUES(tdd_lwprc),
+        acc_trdvol = VALUES(acc_trdvol),
+        acc_trdval = VALUES(acc_trdval),
+        mktcap = VALUES(mktcap),
+        list_shrs = VALUES(list_shrs)
+    </insert>
+
+    <select id="countByBasDdAndMarket" resultType="int">
+        SELECT COUNT(1)
+        FROM krx_daily_trade
+        WHERE bas_dd = #{basDd}
+        AND mkt_nm = #{market}
+    </select>
+
+
+</mapper>
