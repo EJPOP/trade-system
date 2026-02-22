@@ -11,6 +11,7 @@ import top.tradesystem.krx.repository.KrxDailyTradeMapper;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -31,28 +32,19 @@ public class KrxDailyTradeService {
         this.mapper = mapper;
     }
 
-    // =========================
-    // 1) KRX OpenAPI 호출 (원천)
-    // =========================
     public Mono<List<Map<String, Object>>> fetchDailyTradeFromApi(String basDd, Market market) {
-        // client.fetchDailyTrade: Mono<List<Map<String,String>>> 라는 전제
         return client.fetchDailyTrade(basDd, market)
                 .map(list -> list.stream()
                         .map(m -> {
                             Map<String, Object> out = new LinkedHashMap<>();
-                            out.putAll(m); // String -> Object 업캐스팅
+                            out.putAll(m);
                             return out;
                         })
-                        .toList()
-                )
+                        .toList())
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
-    // =========================
-    // 2) DB 조회
-    // =========================
     public Mono<List<KrxDailyTradeRow>> findByBasDdAndMarket(String basDd, String market) {
-        // DB 컬럼은 market이 아니라 mkt_nm 이고, mapper XML에서 mkt_nm = #{market} 로 처리
         return Mono.fromCallable(() -> mapper.findByBasDdAndMarket(basDd, market))
                 .subscribeOn(Schedulers.boundedElastic());
     }
@@ -70,10 +62,6 @@ public class KrxDailyTradeService {
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
-    // =========================
-    // 3) 저장: 단일 일자 sync
-    //    - 이미 있으면 스킵
-    // =========================
     public Mono<SyncResult> sync(String basDd, String market) {
         String m = (market == null || market.isBlank()) ? "KOSPI" : market.toUpperCase(Locale.ROOT);
 
@@ -96,7 +84,6 @@ public class KrxDailyTradeService {
     private Mono<SyncResult> syncOne(String basDd, Market market) {
         final String mk = market.name();
 
-        // ✅ 0) 이미 DB에 있으면 스킵(= API 호출/저장 안 함)
         Mono<Boolean> alreadyExists = Mono.fromCallable(() -> mapper.countByBasDdAndMarket(basDd, mk) > 0)
                 .subscribeOn(Schedulers.boundedElastic());
 
@@ -105,9 +92,8 @@ public class KrxDailyTradeService {
                 return Mono.just(new SyncResult(basDd, mk, 0, true));
             }
 
-            // ✅ 1) 없으면 API 호출 → 변환 → upsert
             return fetchDailyTradeFromApi(basDd, market)
-                    .map(rows -> toTradeRows(basDd, rows))   // ✅ market.name() 넘기지 않음
+                    .map(rows -> toTradeRows(basDd, rows))
                     .flatMap((List<KrxDailyTradeRow> toSave) ->
                             Mono.fromCallable(() -> {
                                         if (toSave == null || toSave.isEmpty()) return 0;
@@ -119,21 +105,23 @@ public class KrxDailyTradeService {
         });
     }
 
-    // =========================
-    // 4) 저장: from~to 누적 sync
-    //    - 주말/공휴일 포함
-    //    - 이미 있으면 스킵
-    // =========================
     public Mono<RangeSyncResult> syncRange(String from, String to, String market) {
+        return syncRange(from, to, market, 0L);
+    }
+
+    public Mono<RangeSyncResult> syncRange(String from, String to, String market, long delayMs) {
         LocalDate start = LocalDate.parse(from, YYYYMMDD);
         LocalDate end = LocalDate.parse(to, YYYYMMDD);
         if (end.isBefore(start)) {
             return Mono.error(new IllegalArgumentException("to must be >= from"));
         }
+        if (delayMs < 0) {
+            return Mono.error(new IllegalArgumentException("delayMs must be >= 0"));
+        }
 
         String m = (market == null || market.isBlank()) ? "KOSPI" : market.toUpperCase(Locale.ROOT);
+        Duration perDayDelay = Duration.ofMillis(delayMs);
 
-        // ✅ 모든 날짜 방출 (주말/공휴일 포함)
         Flux<String> days = Flux.create(sink -> {
             LocalDate d = start;
             while (!d.isAfter(end)) {
@@ -143,40 +131,35 @@ public class KrxDailyTradeService {
             sink.complete();
         });
 
-        // ✅ 날짜별 sync 순차 실행(concatMap)
-        return days.concatMap(dd -> sync(dd, m))
+        return days.concatMap(dd -> Mono.delay(perDayDelay).then(sync(dd, m)))
                 .collectList()
                 .map(list -> {
                     int totalSaved = list.stream().mapToInt(SyncResult::saved).sum();
                     int totalSkipped = (int) list.stream().filter(SyncResult::skipped).count();
-                    return new RangeSyncResult(from, to, m, totalSaved, totalSkipped, list);
+                    return new RangeSyncResult(from, to, m, delayMs, totalSaved, totalSkipped, list);
                 });
     }
 
-    // =========================
-    // 5) 변환: Map -> Row
-    // =========================
     private List<KrxDailyTradeRow> toTradeRows(String basDd, List<Map<String, Object>> rows) {
         if (rows == null || rows.isEmpty()) return List.of();
 
         return rows.stream()
-                .map(m -> KrxDailyTradeRow.fromApiMap(basDd, m)) // ✅ DB 스키마 기준 DTO로 변환
+                .map(m -> KrxDailyTradeRow.fromApiMap(basDd, m))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
     }
 
-    // =========================
-    // DTO
-    // =========================
-    public record SyncResult(String basDd, String market, int saved, boolean skipped) {}
+    public record SyncResult(String basDd, String market, int saved, boolean skipped) {
+    }
 
     public record RangeSyncResult(
             String from,
             String to,
             String market,
+            long delayMs,
             int totalSaved,
             int totalSkipped,
             List<SyncResult> results
-    ) {}
-
+    ) {
+    }
 }

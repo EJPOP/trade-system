@@ -20,7 +20,6 @@ public record KrxDailyTradeRow(
         String listShrs
 ) {
 
-    // OpenAPI Map -> DTO 변환
     public static KrxDailyTradeRow fromApiMap(String basDd, Map<String, Object> m) {
         if (m == null) return null;
 

@@ -1,12 +1,13 @@
 package top.tradesystem.krx.service;
 
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import top.tradesystem.krx.client.KrxOpenApiClient;
 import top.tradesystem.krx.dto.Market;
 
-import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.Duration;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,45 +24,30 @@ public class KrxTickerService {
         this.client = client;
     }
 
-    // =========================
-    // ✅ 신규(원천) 호출 메서드
-    // =========================
-
-    /** KOSPI 종목 마스터 원천 조회 */
     public Mono<List<Map<String, String>>> fetchKospi(String basDd) {
         return client.fetchIsuBaseInfo(basDd, Market.KOSPI)
                 .map(r -> r == null ? List.of() : r);
     }
 
-    /** KOSDAQ 종목 마스터 원천 조회 */
     public Mono<List<Map<String, String>>> fetchKosdaq(String basDd) {
         return client.fetchIsuBaseInfo(basDd, Market.KOSDAQ)
                 .map(r -> r == null ? List.of() : r);
     }
 
-    /** 공용(시장 선택) 종목 마스터 원천 조회 */
     public Mono<List<Map<String, String>>> fetch(String basDd, String market) {
         Market m = Market.valueOf(market.toUpperCase());
         return client.fetchIsuBaseInfo(basDd, m)
                 .map(r -> r == null ? List.of() : r);
     }
 
-    // ==========================================
-    // ✅ 기존 코드 호환용(컴파일 깨짐 방지용) 메서드
-    //   - 컨트롤러/SyncService가 찾는 메서드들
-    // ==========================================
-
-    /** (기존 호환) KOSPI */
     public Mono<List<Map<String, String>>> getKospi(String basDd) {
         return fetchKospi(basDd);
     }
 
-    /** (기존 호환) KOSDAQ */
     public Mono<List<Map<String, String>>> getKosdaq(String basDd) {
         return fetchKosdaq(basDd);
     }
 
-    /** (기존 호환) ALL = KOSPI + KOSDAQ merge */
     public Mono<List<Map<String, String>>> getAll(String basDd) {
         return Mono.zip(fetchKospi(basDd), fetchKosdaq(basDd))
                 .map(tuple -> {
@@ -72,16 +58,61 @@ public class KrxTickerService {
                 });
     }
 
-    /**
-     * (기존 호환) basDd 미입력 시 사용할 최근 영업일 추정값.
-     * - 주말만 제외(토/일) 하는 "추정" 로직
-     * - KRX 휴장일(공휴일)은 여기서 정확히 맞추지 않음
-     */
-    public String guessLatestBusinessDay() {
-        LocalDate d = LocalDate.now();
-        // 오늘이 토/일이면 직전 금요일로
-        if (d.getDayOfWeek() == DayOfWeek.SATURDAY) d = d.minusDays(1);
-        if (d.getDayOfWeek() == DayOfWeek.SUNDAY) d = d.minusDays(2);
-        return d.format(BAS_DD_FMT);
+    public Mono<RangeFetchResult> fetchRange(String from, String to, String market) {
+        return fetchRange(from, to, market, 0L);
     }
+
+    public Mono<RangeFetchResult> fetchRange(String from, String to, String market, long delayMs) {
+        LocalDate start = LocalDate.parse(from, BAS_DD_FMT);
+        LocalDate end = LocalDate.parse(to, BAS_DD_FMT);
+        if (end.isBefore(start)) {
+            return Mono.error(new IllegalArgumentException("to must be >= from"));
+        }
+        if (delayMs < 0) {
+            return Mono.error(new IllegalArgumentException("delayMs must be >= 0"));
+        }
+
+        String m = (market == null || market.isBlank()) ? "ALL" : market.toUpperCase();
+        Duration perDayDelay = Duration.ofMillis(delayMs);
+
+        Flux<String> days = Flux.create(sink -> {
+            LocalDate d = start;
+            while (!d.isAfter(end)) {
+                sink.next(d.format(BAS_DD_FMT));
+                d = d.plusDays(1);
+            }
+            sink.complete();
+        });
+
+        return days.concatMap(dd -> Mono.delay(perDayDelay).then(fetchByDay(dd, m)))
+                .collectList()
+                .map(list -> new RangeFetchResult(
+                        from,
+                        to,
+                        m,
+                        delayMs,
+                        list.stream().mapToInt(DailyFetchResult::fetched).sum(),
+                        list
+                ));
+    }
+
+    private Mono<DailyFetchResult> fetchByDay(String basDd, String market) {
+        return switch (market) {
+            case "KOSPI" -> getKospi(basDd).map(rows -> new DailyFetchResult(basDd, "KOSPI", rows.size()));
+            case "KOSDAQ" -> getKosdaq(basDd).map(rows -> new DailyFetchResult(basDd, "KOSDAQ", rows.size()));
+            case "ALL" -> getAll(basDd).map(rows -> new DailyFetchResult(basDd, "ALL", rows.size()));
+            default -> Mono.error(new IllegalArgumentException("market must be KOSPI|KOSDAQ|ALL"));
+        };
+    }
+
+    public record DailyFetchResult(String basDd, String market, int fetched) {}
+
+    public record RangeFetchResult(
+            String from,
+            String to,
+            String market,
+            long delayMs,
+            int totalFetched,
+            List<DailyFetchResult> results
+    ) {}
 }

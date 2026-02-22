@@ -32,7 +32,7 @@ mybatis:
     map-underscore-to-camel-case: false
 
 krx:
-  base-url: https://data-dbg.krx.co.kr/svc/apis/sto
+  base-url: https://data-dbg.krx.co.kr
   auth-key: "7EED7AEFACC24B34A00F0167EA7516FA0169AFB4"
   timeout-seconds: 30
   response-charset: MS949

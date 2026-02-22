@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="top.tradesystem.krx.repository.KrxIndexDailyPriceMapper">
+
+    <resultMap id="KrxIndexDailyPriceRowMap" type="top.tradesystem.krx.dto.KrxIndexDailyPriceRow">
+        <constructor>
+            <arg column="bas_dd" javaType="java.lang.String"/>
+            <arg column="market" javaType="java.lang.String"/>
+            <arg column="idx_clss" javaType="java.lang.String"/>
+            <arg column="idx_nm" javaType="java.lang.String"/>
+            <arg column="clsprc_idx" javaType="java.math.BigDecimal"/>
+            <arg column="cmpprevdd_idx" javaType="java.math.BigDecimal"/>
+            <arg column="fluc_rt" javaType="java.math.BigDecimal"/>
+            <arg column="opnprc_idx" javaType="java.math.BigDecimal"/>
+            <arg column="hgprc_idx" javaType="java.math.BigDecimal"/>
+            <arg column="lwprc_idx" javaType="java.math.BigDecimal"/>
+            <arg column="acc_trdvol" javaType="java.math.BigDecimal"/>
+            <arg column="acc_trdval" javaType="java.math.BigDecimal"/>
+            <arg column="mktcap" javaType="java.math.BigDecimal"/>
+        </constructor>
+    </resultMap>
+
+    <select id="findByBasDdAndMarket" resultMap="KrxIndexDailyPriceRowMap">
+        SELECT
+            bas_dd, market, idx_clss, idx_nm,
+            clsprc_idx, cmpprevdd_idx, fluc_rt,
+            opnprc_idx, hgprc_idx, lwprc_idx,
+            acc_trdvol, acc_trdval, mktcap
+        FROM krx_index_daily_price
+        WHERE bas_dd = #{basDd}
+          AND market = #{market}
+        ORDER BY idx_nm
+    </select>
+
+    <insert id="upsertBatch">
+        INSERT INTO krx_index_daily_price (
+            bas_dd, market, idx_clss, idx_nm,
+            clsprc_idx, cmpprevdd_idx, fluc_rt,
+            opnprc_idx, hgprc_idx, lwprc_idx,
+            acc_trdvol, acc_trdval, mktcap
+        )
+        VALUES
+        <foreach collection="rows" item="r" separator=",">
+            (
+                #{r.basDd}, #{r.market}, #{r.idxClss}, #{r.idxNm},
+                #{r.clsprcIdx}, #{r.cmpprevddIdx}, #{r.flucRt},
+                #{r.opnprcIdx}, #{r.hgprcIdx}, #{r.lwprcIdx},
+                #{r.accTrdvol}, #{r.accTrdval}, #{r.mktcap}
+            )
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            idx_clss = VALUES(idx_clss),
+            clsprc_idx = VALUES(clsprc_idx),
+            cmpprevdd_idx = VALUES(cmpprevdd_idx),
+            fluc_rt = VALUES(fluc_rt),
+            opnprc_idx = VALUES(opnprc_idx),
+            hgprc_idx = VALUES(hgprc_idx),
+            lwprc_idx = VALUES(lwprc_idx),
+            acc_trdvol = VALUES(acc_trdvol),
+            acc_trdval = VALUES(acc_trdval),
+            mktcap = VALUES(mktcap),
+            updated_at = CURRENT_TIMESTAMP
+    </insert>
+
+</mapper>

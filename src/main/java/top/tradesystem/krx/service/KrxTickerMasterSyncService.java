@@ -1,6 +1,7 @@
 package top.tradesystem.krx.service;
 
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import top.tradesystem.krx.dto.KrxTickerMasterRow;
@@ -8,6 +9,7 @@ import top.tradesystem.krx.repository.KrxTickerMasterMapper;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +18,7 @@ import java.util.Map;
 public class KrxTickerMasterSyncService {
 
     private static final DateTimeFormatter KRX_YYYYMMDD = DateTimeFormatter.BASIC_ISO_DATE;
+    private static final DateTimeFormatter BAS_DD_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private final KrxTickerService krxTickerService;
     private final KrxTickerMasterMapper mapper;
@@ -43,6 +46,45 @@ public class KrxTickerMasterSyncService {
                                 })
                                 .subscribeOn(Schedulers.boundedElastic())
                 );
+    }
+
+    public Mono<RangeSyncResult> syncRange(String from, String to, String market) {
+        return syncRange(from, to, market, 0L);
+    }
+
+    public Mono<RangeSyncResult> syncRange(String from, String to, String market, long delayMs) {
+        LocalDate start = LocalDate.parse(from, BAS_DD_FMT);
+        LocalDate end = LocalDate.parse(to, BAS_DD_FMT);
+        if (end.isBefore(start)) {
+            return Mono.error(new IllegalArgumentException("to must be >= from"));
+        }
+        if (delayMs < 0) {
+            return Mono.error(new IllegalArgumentException("delayMs must be >= 0"));
+        }
+
+        String m = (market == null || market.isBlank()) ? "ALL" : market.toUpperCase();
+        Duration perDayDelay = Duration.ofMillis(delayMs);
+
+        Flux<String> days = Flux.create(sink -> {
+            LocalDate d = start;
+            while (!d.isAfter(end)) {
+                sink.next(d.format(BAS_DD_FMT));
+                d = d.plusDays(1);
+            }
+            sink.complete();
+        });
+
+        return days.concatMap(dd -> Mono.delay(perDayDelay).then(sync(dd, m)))
+                .collectList()
+                .map(list -> new RangeSyncResult(
+                        from,
+                        to,
+                        m,
+                        delayMs,
+                        list.stream().mapToInt(SyncResult::fetched).sum(),
+                        list.stream().mapToInt(SyncResult::affected).sum(),
+                        list
+                ));
     }
 
     public Mono<KrxTickerMasterRow> findByCode(String code) {
@@ -93,4 +135,14 @@ public class KrxTickerMasterSyncService {
     }
 
     public record SyncResult(int fetched, int affected) {}
+
+    public record RangeSyncResult(
+            String from,
+            String to,
+            String market,
+            long delayMs,
+            int totalFetched,
+            int totalAffected,
+            List<SyncResult> results
+    ) {}
 }

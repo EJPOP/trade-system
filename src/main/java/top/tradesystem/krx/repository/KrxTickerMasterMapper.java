@@ -11,6 +11,5 @@ public interface KrxTickerMasterMapper {
 
     List<KrxTickerMasterRow> findByMarket(@Param("market") String market);
 
-    // ✅ 종목코드 단건 조회
     KrxTickerMasterRow findByCode(@Param("code") String code);
 }

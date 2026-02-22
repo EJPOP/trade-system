@@ -38,3 +38,10 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
+springBoot {
+    mainClass = 'top.tradesystem.TradeSystemApplication'
+}
+
+tasks.named('bootRun') {
+    mainClass = 'top.tradesystem.TradeSystemApplication'
+}

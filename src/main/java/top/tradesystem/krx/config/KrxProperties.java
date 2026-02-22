@@ -11,6 +11,6 @@ public record KrxProperties(
 ) {
     public KrxProperties {
         if (timeoutSeconds <= 0) timeoutSeconds = 30;
-        if (responseCharset == null || responseCharset.isBlank()) responseCharset = "MS949"; // KRX가 종종 EUC-KR/MS949
+        if (responseCharset == null || responseCharset.isBlank()) responseCharset = "MS949";
     }
 }
