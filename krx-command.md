@@ -2,16 +2,23 @@
 
 ## 1. from-to DB 저장 (최우선)
 ```powershell
-cd C:\trade-system
+
+# 0) 당일 티커, 일일 거래, 시세 저장
+cd C:\trade-system\python; 
+.\run_daily_pipeline.ps1 -AsOfDate (Get-Date -Format 'yyyyMMdd')
+
+$d = (Get-Date).AddDays(-1).ToString('yyyyMMdd') 
+python -m src.notifications.run_notify_all_strategies_slack --asOfDate $d   
 
 # 1) 티커 마스터 저장(기간)
-irm -Method Post "http://localhost:7777/internal/krx/tickers/master/sync-range?from=20250102&to=20251231&market=ALL&delayMs=300"
+irm -Method Post "http://localhost:7777/internal/krx/tickers/master/sync-range?from=20260220&to=20260223&market=ALL&delayMs=300"
 
 # 2) 종목 일일 거래 저장(기간)
-irm -Method Post "http://localhost:7777/svc/apis/sto/sync-range?from=20250102&to=20251231&market=ALL&delayMs=300"
+irm -Method Post "http://localhost:7777/svc/apis/sto/sync-range?from=20260220&to=20260223&market=ALL&delayMs=300"
 
 # 3) 지수 일일 시세 저장(기간)
-irm -Method Post "http://localhost:7777/svc/apis/idx/sync-range?from=20250102&to=20251231&market=ALL&delayMs=300"
+irm -Method Post "http://localhost:7777/svc/apis/idx/sync-range?from=20260220&to=20260223&market=ALL&delayMs=300"
+
 ```
 - `delayMs`는 일자별 호출 지연(ms)입니다. 과호출 방지용으로 `300~500` 권장.
 - 날짜 형식: `yyyyMMdd`
