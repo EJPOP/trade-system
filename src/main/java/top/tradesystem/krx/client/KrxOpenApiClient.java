@@ -9,8 +9,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 import top.tradesystem.krx.config.KrxProperties;
-import top.tradesystem.krx.dto.KrxDailyTradeRequest;
-import top.tradesystem.krx.dto.KrxIsuBaseInfoRequest;
+import top.tradesystem.krx.dto.BasDdRequest;
 import top.tradesystem.krx.dto.Market;
 
 import java.nio.ByteBuffer;
@@ -61,7 +60,7 @@ public class KrxOpenApiClient {
             case KOSDAQ -> PATH_KSQ_ISU_BASE_INFO;
             default -> throw new IllegalArgumentException("Unsupported market: " + market);
         };
-        return postForOutBlock1List(path, new KrxIsuBaseInfoRequest(basDd));
+        return postForOutBlock1List(path, new BasDdRequest(basDd));
     }
 
     public Mono<List<Map<String, String>>> fetchDailyTrade(String basDd, Market market) {
@@ -70,7 +69,7 @@ public class KrxOpenApiClient {
             case KOSDAQ -> PATH_KSQ_BYDD_TRD;
             default -> throw new IllegalArgumentException("Unsupported market: " + market);
         };
-        return postForOutBlock1List(path, new KrxDailyTradeRequest(basDd));
+        return postForOutBlock1List(path, new BasDdRequest(basDd));
     }
 
     public Mono<List<Map<String, String>>> fetchIndexDailyPrice(String basDd, Market market) {
@@ -79,7 +78,7 @@ public class KrxOpenApiClient {
             case KOSDAQ -> PATH_KOSDAQ_DD_TRD;
             default -> throw new IllegalArgumentException("Unsupported market: " + market);
         };
-        return postForOutBlock1List(path, new KrxDailyTradeRequest(basDd));
+        return postForOutBlock1List(path, new BasDdRequest(basDd));
     }
 
     // Backward-compatible alias.

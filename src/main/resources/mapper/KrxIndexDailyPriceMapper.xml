@@ -23,12 +23,15 @@
         </constructor>
     </resultMap>
 
+    <sql id="indexDailyPriceCols">
+        bas_dd, market, idx_clss, idx_nm,
+        clsprc_idx, cmpprevdd_idx, fluc_rt,
+        opnprc_idx, hgprc_idx, lwprc_idx,
+        acc_trdvol, acc_trdval, mktcap
+    </sql>
+
     <select id="findByBasDdAndMarket" resultMap="KrxIndexDailyPriceRowMap">
-        SELECT
-            bas_dd, market, idx_clss, idx_nm,
-            clsprc_idx, cmpprevdd_idx, fluc_rt,
-            opnprc_idx, hgprc_idx, lwprc_idx,
-            acc_trdvol, acc_trdval, mktcap
+        SELECT <include refid="indexDailyPriceCols"/>
         FROM krx_index_daily_price
         WHERE bas_dd = #{basDd}
           AND market = #{market}
@@ -37,10 +40,7 @@
 
     <insert id="upsertBatch">
         INSERT INTO krx_index_daily_price (
-            bas_dd, market, idx_clss, idx_nm,
-            clsprc_idx, cmpprevdd_idx, fluc_rt,
-            opnprc_idx, hgprc_idx, lwprc_idx,
-            acc_trdvol, acc_trdval, mktcap
+            <include refid="indexDailyPriceCols"/>
         )
         VALUES
         <foreach collection="rows" item="r" separator=",">

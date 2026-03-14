@@ -54,14 +54,26 @@ MyBatis XML mappers: `src/main/resources/mapper/*.xml`
 
 ### Python Layer (`python/src/`)
 
-- **`strategies/`** - Quant strategy modules (value-quality-momentum, trend follower, turtle trader, cross-section momentum, etc.). Each provides `--asOfDate`, `--maxHoldings`, liquidity filter, JSON output.
-- **`notifications/`** - Slack notification modules per strategy
+- **`strategies/`** - 17 quant strategy modules, all extending `BaseStrategy` ABC (`base.py`). Shared CLI/fetch/output in base; each strategy implements only `build_picks()`. Registry in `registry.py`.
+- **`daytrade/`** - Day trading engine with 4 sub-packages:
+  - `core/` - engine, models, data_loader, base, indicators
+  - `strategies/` - 12 strategy implementations (orb, vwap_pullback, ema_cross, etc.)
+  - `scoring/` - daily_scorer, factor_scorer, combined_scorer, factors
+  - `regime/` - market regime detection, sector_map
+- **`notifications/`** - Slack notifications with 2 sub-packages:
+  - `strategy/` - picks, all_strategies, strict_triplet, report10
+  - `timeslot/` - pre_market, open_scanner, close_betting, orchestrator
+  - Root: shared modules (slack_send_bot, formatters, db_helpers, shared_fetchers)
 - **`indicators/`** - Valuation metric computation from DB data
 - **`macro/`** - US (FRED) and KR (ECOS) macro regime detection
 - **`modules/`** - Hexagonal architecture core: `domain/` (models, ports, flow), `usecase/`, `infra/persistence_mysql/`, `app/`
 - **`dart/`** - DART disclosure/financial data collection
 - **`ops/`** - Data quality checks, paper trades, portfolio building, performance reports
+- **`monitoring/`** - System monitoring: data freshness, pipeline health, strategy performance, anomaly detection
 - **`backtests/`** - Parameter optimization and backtesting
+- **`utils/`** - Shared utilities: `cli.py` (bootstrap), `logger.py`, `date_helpers.py`, `pandas_utils.py`, `constants.py`
+- **`balance_common/`** - Portfolio account shared runner, models, db_store
+- **`crawlers/`** - Naver Finance KRX data crawler (KRX API fallback)
 
 ### Database (`quant` schema)
 
@@ -74,7 +86,7 @@ DB scripts in `.reffiles/db-create-script/`, KRX OpenAPI docs in `.reffiles/krx-
 
 ## Daily Pipeline Process (End-to-End)
 
-전체 프로세스: **KRX 데이터 수집/적재 → 전략 종목 추천 → Slack 알림 전송**
+전체 프로세스: **KRX 데이터 수집/적재 → 17개 전략 종목 추천 → Slack 알림 전송**
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -105,7 +117,7 @@ DB scripts in `.reffiles/db-create-script/`, KRX OpenAPI docs in `.reffiles/krx-
 ┌─────────────────────────────────────────────────────────────┐
 │  Step 3. 퀀트 전략 실행 & 종목 추천 (Python)                     │
 │                                                             │
-│  16개 전략 모듈이 DB 데이터를 읽어 종목 선정 (JSON 출력)           │
+│  17개 전략 모듈이 DB 데이터를 읽어 종목 선정 (JSON 출력)           │
 │  - turtle     : 터틀 트레이더                                 │
 │  - vqm        : 가치·퀄리티·모멘텀                             │
 │  - lowvol     : 저변동 추세                                   │
@@ -122,6 +134,7 @@ DB scripts in `.reffiles/db-create-script/`, KRX OpenAPI docs in `.reffiles/krx-
 │  - pairs      : 페어트레이딩 (Z-score)                        │
 │  - reversal   : 단기반전 (주간 역추세)                          │
 │  - volmanaged : 변동성조절 모멘텀 (시장레짐)                     │
+│  - sentdiv   : 심리 다이버전스                                   │
 │                                                             │
 │  각 전략 → strict gate 필터 → 매수/매도/손절가 산출              │
 └──────────────────────┬──────────────────────────────────────┘
@@ -189,11 +202,44 @@ cd C:\trade-system\python
 - `src/main/resources/application.yml` — DB connection, KRX API base URL, auth key, charset, logging
 - `python/.env` — `DB_*`, `SLACK_*`, `DART_API_KEY`, `FRED_API_KEY`, `ECOS_API_KEY`, `KR_ECOS_*`
 
+### Monitoring System (`python/src/monitoring/`)
+
+5개 점검 카테고리로 시스템 전체를 모니터링:
+
+| 카테고리 | 모듈 | 점검 내용 |
+|---------|------|---------|
+| DATA_FRESHNESS | `check_data_freshness.py` | 테이블별 최신 날짜, 행 수, US 데이터 신선도 |
+| PIPELINE_HEALTH | `check_pipeline_health.py` | 파이프라인 실행 기록, 실패 스텝, 실행 추이 |
+| STRATEGY_PERF | `check_strategy_perf.py` | 수익률, 승률, MDD (paper_trade_log 기반) |
+| SYSTEM_HEALTH | `check_system_health.py` | DB 연결, API 가용성, 디스크, 테이블 크기 |
+| ANOMALY | `check_anomaly.py` | 중복 데이터, 비정상 가격, 거래량 급변, 종목 수 변동 |
+
+```bash
+# 전체 점검
+python -m src.monitoring.run_monitor --asOfDate 20260314
+
+# 특정 카테고리만
+python -m src.monitoring.run_monitor --category data_freshness
+
+# JSON 출력
+python -m src.monitoring.run_monitor --json --dryRun
+
+# 일일 요약 Slack 전송
+python -m src.monitoring.run_monitor --dailySummary
+```
+
+DB 테이블:
+- `monitoring_check_log` — 점검 결과 이력 (자동 생성)
+- `pipeline_run_log` — 파이프라인 스텝 실행 기록 (자동 생성)
+
 ## Key Conventions
 
 - Date format everywhere: `YYYYMMDD` string
 - Numeric DB columns may be `VARCHAR` — safe conversion required before calculation (Python layer)
 - Python imports: always absolute from `src` (e.g., `from src.modules...`), never relative root imports
+- New quant strategies must extend `BaseStrategy` ABC in `strategies/base.py`
+- Day trading sub-packages: `daytrade/{core,strategies,scoring,regime}/`
+- Notification sub-packages: `notifications/{strategy,timeslot}/` (shared modules at root)
 - MyBatis: `map-underscore-to-camel-case: false` — column names match DB exactly
 - Root directory kept clean: reference files go in `.reffiles/`, IDE/build artifacts excluded from git
-- Operational commands documented in `krx-command.md`
+- Architecture docs: `python/guide.md`, operational commands: `python/command.md`

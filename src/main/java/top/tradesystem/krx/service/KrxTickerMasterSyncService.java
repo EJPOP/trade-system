@@ -1,24 +1,21 @@
 package top.tradesystem.krx.service;
 
 import org.springframework.stereotype.Service;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 import top.tradesystem.krx.dto.KrxTickerMasterRow;
 import top.tradesystem.krx.repository.KrxTickerMasterMapper;
 
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.time.Duration;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 @Service
-public class KrxTickerMasterSyncService {
+public class KrxTickerMasterSyncService extends BaseSyncService {
 
     private static final DateTimeFormatter KRX_YYYYMMDD = DateTimeFormatter.BASIC_ISO_DATE;
-    private static final DateTimeFormatter BAS_DD_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private final KrxTickerService krxTickerService;
     private final KrxTickerMasterMapper mapper;
@@ -39,12 +36,11 @@ public class KrxTickerMasterSyncService {
         return source
                 .map(this::toRows)
                 .flatMap(rows ->
-                        Mono.fromCallable(() -> {
-                                    if (rows.isEmpty()) return new SyncResult(0, 0);
-                                    int affected = mapper.upsertBatch(rows);
-                                    return new SyncResult(rows.size(), affected);
-                                })
-                                .subscribeOn(Schedulers.boundedElastic())
+                        dbCall(() -> {
+                            if (rows.isEmpty()) return new SyncResult(0, 0);
+                            int affected = mapper.upsertBatch(rows);
+                            return new SyncResult(rows.size(), affected);
+                        })
                 );
     }
 
@@ -55,46 +51,34 @@ public class KrxTickerMasterSyncService {
     public Mono<RangeSyncResult> syncRange(String from, String to, String market, long delayMs) {
         LocalDate start = LocalDate.parse(from, BAS_DD_FMT);
         LocalDate end = LocalDate.parse(to, BAS_DD_FMT);
-        if (end.isBefore(start)) {
-            return Mono.error(new IllegalArgumentException("to must be >= from"));
-        }
-        if (delayMs < 0) {
-            return Mono.error(new IllegalArgumentException("delayMs must be >= 0"));
-        }
 
-        String m = (market == null || market.isBlank()) ? "ALL" : market.toUpperCase();
+        Mono<Void> validation = validateRange(start, end, delayMs);
+
+        String m = normalizeMarket(market, "ALL");
         Duration perDayDelay = Duration.ofMillis(delayMs);
 
-        Flux<String> days = Flux.create(sink -> {
-            LocalDate d = start;
-            while (!d.isAfter(end)) {
-                sink.next(d.format(BAS_DD_FMT));
-                d = d.plusDays(1);
-            }
-            sink.complete();
-        });
-
-        return days.concatMap(dd -> Mono.delay(perDayDelay).then(sync(dd, m)))
-                .collectList()
-                .map(list -> new RangeSyncResult(
-                        from,
-                        to,
-                        m,
-                        delayMs,
-                        list.stream().mapToInt(SyncResult::fetched).sum(),
-                        list.stream().mapToInt(SyncResult::affected).sum(),
-                        list
-                ));
+        return validation.then(
+                generateDateRange(start, end)
+                        .concatMap(dd -> Mono.delay(perDayDelay).then(sync(dd, m)))
+                        .collectList()
+                        .map(list -> new RangeSyncResult(
+                                from,
+                                to,
+                                m,
+                                delayMs,
+                                list.stream().mapToInt(SyncResult::fetched).sum(),
+                                list.stream().mapToInt(SyncResult::affected).sum(),
+                                list
+                        ))
+        );
     }
 
     public Mono<KrxTickerMasterRow> findByCode(String code) {
-        return Mono.fromCallable(() -> mapper.findByCode(code))
-                .subscribeOn(Schedulers.boundedElastic());
+        return dbCall(() -> mapper.findByCode(code));
     }
 
     public Mono<List<KrxTickerMasterRow>> findByMarket(String market) {
-        return Mono.fromCallable(() -> mapper.findByMarket(market))
-                .subscribeOn(Schedulers.boundedElastic());
+        return dbCall(() -> mapper.findByMarket(market));
     }
 
     private List<KrxTickerMasterRow> toRows(List<Map<String, String>> maps) {

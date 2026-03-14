@@ -1,7 +1,6 @@
 package top.tradesystem.krx.service;
 
 import org.springframework.stereotype.Service;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import top.tradesystem.krx.client.KrxOpenApiClient;
@@ -10,19 +9,15 @@ import top.tradesystem.krx.dto.Market;
 import top.tradesystem.krx.repository.KrxDailyTradeMapper;
 
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
-public class KrxDailyTradeService {
-
-    private static final DateTimeFormatter YYYYMMDD = DateTimeFormatter.ofPattern("yyyyMMdd");
+public class KrxDailyTradeService extends BaseSyncService {
 
     private final KrxOpenApiClient client;
     private final KrxDailyTradeMapper mapper;
@@ -45,8 +40,7 @@ public class KrxDailyTradeService {
     }
 
     public Mono<List<KrxDailyTradeRow>> findByBasDdAndMarket(String basDd, String market) {
-        return Mono.fromCallable(() -> mapper.findByBasDdAndMarket(basDd, market))
-                .subscribeOn(Schedulers.boundedElastic());
+        return dbCall(() -> mapper.findByBasDdAndMarket(basDd, market));
     }
 
     public Mono<List<KrxDailyTradeRow>> kospi(String basDd) {
@@ -58,12 +52,11 @@ public class KrxDailyTradeService {
     }
 
     public Mono<KrxDailyTradeRow> findByBasDdAndCode(String basDd, String code) {
-        return Mono.fromCallable(() -> mapper.findByBasDdAndCode(basDd, code))
-                .subscribeOn(Schedulers.boundedElastic());
+        return dbCall(() -> mapper.findByBasDdAndCode(basDd, code));
     }
 
     public Mono<SyncResult> sync(String basDd, String market) {
-        String m = (market == null || market.isBlank()) ? "KOSPI" : market.toUpperCase(Locale.ROOT);
+        String m = normalizeMarket(market, "KOSPI");
 
         return switch (m) {
             case "KOSPI" -> syncOne(basDd, Market.KOSPI);
@@ -84,8 +77,7 @@ public class KrxDailyTradeService {
     private Mono<SyncResult> syncOne(String basDd, Market market) {
         final String mk = market.name();
 
-        Mono<Boolean> alreadyExists = Mono.fromCallable(() -> mapper.countByBasDdAndMarket(basDd, mk) > 0)
-                .subscribeOn(Schedulers.boundedElastic());
+        Mono<Boolean> alreadyExists = dbCall(() -> mapper.countByBasDdAndMarket(basDd, mk) > 0);
 
         return alreadyExists.flatMap(exists -> {
             if (exists) {
@@ -95,11 +87,10 @@ public class KrxDailyTradeService {
             return fetchDailyTradeFromApi(basDd, market)
                     .map(rows -> toTradeRows(basDd, rows))
                     .flatMap((List<KrxDailyTradeRow> toSave) ->
-                            Mono.fromCallable(() -> {
-                                        if (toSave == null || toSave.isEmpty()) return 0;
-                                        return mapper.upsertBatch(toSave);
-                                    })
-                                    .subscribeOn(Schedulers.boundedElastic())
+                            dbCall(() -> {
+                                if (toSave == null || toSave.isEmpty()) return 0;
+                                return mapper.upsertBatch(toSave);
+                            })
                     )
                     .map(saved -> new SyncResult(basDd, mk, saved, false));
         });
@@ -110,34 +101,24 @@ public class KrxDailyTradeService {
     }
 
     public Mono<RangeSyncResult> syncRange(String from, String to, String market, long delayMs) {
-        LocalDate start = LocalDate.parse(from, YYYYMMDD);
-        LocalDate end = LocalDate.parse(to, YYYYMMDD);
-        if (end.isBefore(start)) {
-            return Mono.error(new IllegalArgumentException("to must be >= from"));
-        }
-        if (delayMs < 0) {
-            return Mono.error(new IllegalArgumentException("delayMs must be >= 0"));
-        }
+        LocalDate start = LocalDate.parse(from, BAS_DD_FMT);
+        LocalDate end = LocalDate.parse(to, BAS_DD_FMT);
 
-        String m = (market == null || market.isBlank()) ? "KOSPI" : market.toUpperCase(Locale.ROOT);
+        Mono<Void> validation = validateRange(start, end, delayMs);
+
+        String m = normalizeMarket(market, "KOSPI");
         Duration perDayDelay = Duration.ofMillis(delayMs);
 
-        Flux<String> days = Flux.create(sink -> {
-            LocalDate d = start;
-            while (!d.isAfter(end)) {
-                sink.next(d.format(YYYYMMDD));
-                d = d.plusDays(1);
-            }
-            sink.complete();
-        });
-
-        return days.concatMap(dd -> Mono.delay(perDayDelay).then(sync(dd, m)))
-                .collectList()
-                .map(list -> {
-                    int totalSaved = list.stream().mapToInt(SyncResult::saved).sum();
-                    int totalSkipped = (int) list.stream().filter(SyncResult::skipped).count();
-                    return new RangeSyncResult(from, to, m, delayMs, totalSaved, totalSkipped, list);
-                });
+        return validation.then(
+                generateDateRange(start, end)
+                        .concatMap(dd -> Mono.delay(perDayDelay).then(sync(dd, m)))
+                        .collectList()
+                        .map(list -> {
+                            int totalSaved = list.stream().mapToInt(SyncResult::saved).sum();
+                            int totalSkipped = (int) list.stream().filter(SyncResult::skipped).count();
+                            return new RangeSyncResult(from, to, m, delayMs, totalSaved, totalSkipped, list);
+                        })
+        );
     }
 
     private List<KrxDailyTradeRow> toTradeRows(String basDd, List<Map<String, Object>> rows) {

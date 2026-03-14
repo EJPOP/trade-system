@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
-import top.tradesystem.krx.dto.KrxIsuBaseInfoRequest;
+import top.tradesystem.krx.dto.BasDdRequest;
 import top.tradesystem.krx.service.KrxTickerService;
 
 import java.util.List;
@@ -25,13 +25,13 @@ public class KrxTickerController {
     }
 
     @PostMapping(value = "/stk_isu_base_info", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public Mono<Map<String, List<Map<String, String>>>> kospi(@Valid @RequestBody KrxIsuBaseInfoRequest request) {
+    public Mono<Map<String, List<Map<String, String>>>> kospi(@Valid @RequestBody BasDdRequest request) {
         return service.fetchKospi(request.basDd())
                 .map(rows -> Map.of("OutBlock_1", rows));
     }
 
     @PostMapping(value = "/ksq_isu_base_info", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public Mono<Map<String, List<Map<String, String>>>> kosdaq(@Valid @RequestBody KrxIsuBaseInfoRequest request) {
+    public Mono<Map<String, List<Map<String, String>>>> kosdaq(@Valid @RequestBody BasDdRequest request) {
         return service.fetchKosdaq(request.basDd())
                 .map(rows -> Map.of("OutBlock_1", rows));
     }

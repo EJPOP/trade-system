@@ -1,22 +1,18 @@
 package top.tradesystem.krx.service;
 
 import org.springframework.stereotype.Service;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import top.tradesystem.krx.client.KrxOpenApiClient;
 import top.tradesystem.krx.dto.Market;
 
 import java.time.LocalDate;
 import java.time.Duration;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 @Service
-public class KrxTickerService {
-
-    private static final DateTimeFormatter BAS_DD_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
+public class KrxTickerService extends BaseSyncService {
 
     private final KrxOpenApiClient client;
 
@@ -65,35 +61,25 @@ public class KrxTickerService {
     public Mono<RangeFetchResult> fetchRange(String from, String to, String market, long delayMs) {
         LocalDate start = LocalDate.parse(from, BAS_DD_FMT);
         LocalDate end = LocalDate.parse(to, BAS_DD_FMT);
-        if (end.isBefore(start)) {
-            return Mono.error(new IllegalArgumentException("to must be >= from"));
-        }
-        if (delayMs < 0) {
-            return Mono.error(new IllegalArgumentException("delayMs must be >= 0"));
-        }
 
-        String m = (market == null || market.isBlank()) ? "ALL" : market.toUpperCase();
+        Mono<Void> validation = validateRange(start, end, delayMs);
+
+        String m = normalizeMarket(market, "ALL");
         Duration perDayDelay = Duration.ofMillis(delayMs);
 
-        Flux<String> days = Flux.create(sink -> {
-            LocalDate d = start;
-            while (!d.isAfter(end)) {
-                sink.next(d.format(BAS_DD_FMT));
-                d = d.plusDays(1);
-            }
-            sink.complete();
-        });
-
-        return days.concatMap(dd -> Mono.delay(perDayDelay).then(fetchByDay(dd, m)))
-                .collectList()
-                .map(list -> new RangeFetchResult(
-                        from,
-                        to,
-                        m,
-                        delayMs,
-                        list.stream().mapToInt(DailyFetchResult::fetched).sum(),
-                        list
-                ));
+        return validation.then(
+                generateDateRange(start, end)
+                        .concatMap(dd -> Mono.delay(perDayDelay).then(fetchByDay(dd, m)))
+                        .collectList()
+                        .map(list -> new RangeFetchResult(
+                                from,
+                                to,
+                                m,
+                                delayMs,
+                                list.stream().mapToInt(DailyFetchResult::fetched).sum(),
+                                list
+                        ))
+        );
     }
 
     private Mono<DailyFetchResult> fetchByDay(String basDd, String market) {

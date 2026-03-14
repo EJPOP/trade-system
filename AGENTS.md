@@ -8,12 +8,12 @@
 - `build.gradle`, `settings.gradle` : 빌드 설정
 - `.gitignore`, `.gitattributes` : 저장소 설정
 - `.reffiles/` : 참고 자료 보관소
-- `AGENTS.md`, `krx-command.md` : 운영 기준 문서
+- `AGENTS.md` : 운영 기준 문서
 
 ### 빌드/실행
 - 컴파일: `./gradlew compileJava -q`
 - 애플리케이션 실행: `./gradlew bootRun`
-- 실행 명령어 참고: `krx-command.md`
+- 실행 명령어 참고: `python/command.md`
 
 ### 실행 필수 설정
 - DB 및 KRX 설정 파일: `src/main/resources/application.yml`

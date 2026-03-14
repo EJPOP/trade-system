@@ -5,7 +5,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import reactor.util.retry.Retry;
@@ -16,7 +15,6 @@ import top.tradesystem.krx.repository.KrxIndexDailyPriceMapper;
 
 import java.time.Duration;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -24,9 +22,8 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
-public class KrxDailyPriceService {
+public class KrxDailyPriceService extends BaseSyncService {
 
-    private static final DateTimeFormatter YYYYMMDD = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final Logger log = LoggerFactory.getLogger(KrxDailyPriceService.class);
     private static final Retry IDX_RETRY = Retry.backoff(2, Duration.ofMillis(300))
             .filter(KrxDailyPriceService::isRetryable)
@@ -50,12 +47,11 @@ public class KrxDailyPriceService {
     }
 
     public Mono<List<KrxIndexDailyPriceRow>> findByBasDdAndMarket(String basDd, String market) {
-        return Mono.fromCallable(() -> mapper.findByBasDdAndMarket(basDd, market))
-                .subscribeOn(Schedulers.boundedElastic());
+        return dbCall(() -> mapper.findByBasDdAndMarket(basDd, market));
     }
 
     public Mono<SyncResult> sync(String basDd, String market) {
-        String m = (market == null || market.isBlank()) ? "KOSPI" : market.toUpperCase(Locale.ROOT);
+        String m = normalizeMarket(market, "KOSPI");
 
         return switch (m) {
             case "KOSPI" -> syncOneSafe(basDd, Market.KOSPI);
@@ -86,13 +82,12 @@ public class KrxDailyPriceService {
         return fetchIndexDailyPriceFromApi(basDd, market)
                 .retryWhen(IDX_RETRY)
                 .flatMap(rows ->
-                        Mono.fromCallable(() -> {
-                                    List<KrxIndexDailyPriceRow> toSave = toRows(basDd, market.name(), rows);
-                                    int fetchedRows = toSave.size();
-                                    int upsertAffectedRows = toSave.isEmpty() ? 0 : mapper.upsertBatch(toSave);
-                                    return new int[]{fetchedRows, upsertAffectedRows};
-                                })
-                                .subscribeOn(Schedulers.boundedElastic())
+                        dbCall(() -> {
+                            List<KrxIndexDailyPriceRow> toSave = toRows(basDd, market.name(), rows);
+                            int fetchedRows = toSave.size();
+                            int upsertAffectedRows = toSave.isEmpty() ? 0 : mapper.upsertBatch(toSave);
+                            return new int[]{fetchedRows, upsertAffectedRows};
+                        })
                 )
                 .map(stats -> SyncResult.success(basDd, market.name(), stats[0], stats[1]));
     }
@@ -116,40 +111,34 @@ public class KrxDailyPriceService {
     }
 
     public Mono<RangeSyncResult> syncRange(String from, String to, String market, long delayMs) {
-        LocalDate start = LocalDate.parse(from, YYYYMMDD);
-        LocalDate end = LocalDate.parse(to, YYYYMMDD);
-        if (end.isBefore(start)) return Mono.error(new IllegalArgumentException("to must be >= from"));
-        if (delayMs < 0) return Mono.error(new IllegalArgumentException("delayMs must be >= 0"));
+        LocalDate start = LocalDate.parse(from, BAS_DD_FMT);
+        LocalDate end = LocalDate.parse(to, BAS_DD_FMT);
 
-        String m = (market == null || market.isBlank()) ? "ALL" : market.toUpperCase(Locale.ROOT);
+        Mono<Void> validation = validateRange(start, end, delayMs);
+
+        String m = normalizeMarket(market, "ALL");
         Duration perDayDelay = Duration.ofMillis(delayMs);
 
-        Flux<String> days = Flux.create(sink -> {
-            LocalDate d = start;
-            while (!d.isAfter(end)) {
-                sink.next(d.format(YYYYMMDD));
-                d = d.plusDays(1);
-            }
-            sink.complete();
-        });
-
-        return days.concatMap(dd ->
-                        Mono.delay(perDayDelay)
-                                .then(sync(dd, m))
-                )
-                .collectList()
-                .map(list -> new RangeSyncResult(
-                        from,
-                        to,
-                        m,
-                        delayMs,
-                        list.stream().mapToInt(SyncResult::saved).sum(),
-                        list.stream().mapToInt(SyncResult::fetchedRows).sum(),
-                        list.stream().mapToInt(SyncResult::upsertAffectedRows).sum(),
-                        (int) list.stream().filter(SyncResult::failed).count(),
-                        (int) list.stream().filter(SyncResult::skipped).count(),
-                        list
-                ));
+        return validation.then(
+                generateDateRange(start, end)
+                        .concatMap(dd ->
+                                Mono.delay(perDayDelay)
+                                        .then(sync(dd, m))
+                        )
+                        .collectList()
+                        .map(list -> new RangeSyncResult(
+                                from,
+                                to,
+                                m,
+                                delayMs,
+                                list.stream().mapToInt(SyncResult::saved).sum(),
+                                list.stream().mapToInt(SyncResult::fetchedRows).sum(),
+                                list.stream().mapToInt(SyncResult::upsertAffectedRows).sum(),
+                                (int) list.stream().filter(SyncResult::failed).count(),
+                                (int) list.stream().filter(SyncResult::skipped).count(),
+                                list
+                        ))
+        );
     }
 
     private boolean isSkippable(Throwable ex, String message) {

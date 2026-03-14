@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
-import top.tradesystem.krx.dto.KrxDailyTradeRequest;
+import top.tradesystem.krx.dto.BasDdRequest;
 import top.tradesystem.krx.dto.Market;
 import top.tradesystem.krx.service.KrxDailyPriceService;
 
@@ -26,13 +26,13 @@ public class KrxDailyPriceController {
     }
 
     @PostMapping(value = "/kospi_dd_trd", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public Mono<Map<String, List<Map<String, String>>>> kospi(@Valid @RequestBody KrxDailyTradeRequest request) {
+    public Mono<Map<String, List<Map<String, String>>>> kospi(@Valid @RequestBody BasDdRequest request) {
         return service.fetchIndexDailyPriceFromApi(request.basDd(), Market.KOSPI)
                 .map(rows -> Map.of("OutBlock_1", rows));
     }
 
     @PostMapping(value = "/kosdaq_dd_trd", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public Mono<Map<String, List<Map<String, String>>>> kosdaq(@Valid @RequestBody KrxDailyTradeRequest request) {
+    public Mono<Map<String, List<Map<String, String>>>> kosdaq(@Valid @RequestBody BasDdRequest request) {
         return service.fetchIndexDailyPriceFromApi(request.basDd(), Market.KOSDAQ)
                 .map(rows -> Map.of("OutBlock_1", rows));
     }
