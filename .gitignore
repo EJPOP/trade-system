@@ -1,42 +1,49 @@
-HELP.md
+### Build outputs ###
 .gradle
 build/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
+target/
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
 
-### STS ###
-.apt_generated
+### IDE ###
+.idea
+*.iws
+*.iml
+*.ipr
+.vscode/
 .classpath
 .factorypath
 .project
 .settings
 .springBeans
 .sts4-cache
-bin/
-!**/src/main/**/bin/
-!**/src/test/**/bin/
-
-### IntelliJ IDEA ###
-.idea
-*.iws
-*.iml
-*.ipr
-out/
-!**/src/main/**/out/
-!**/src/test/**/out/
-
-### NetBeans ###
+.apt_generated
 /nbproject/private/
 /nbbuild/
 /dist/
 /nbdist/
 /.nb-gradle/
 
-### VS Code ###
-.vscode/
+### Claude Code ###
+.claude/
 
-*.logpython/
-python/
+### Logs ###
 *.log
-target/
+
+### OS ###
+.DS_Store
+Thumbs.db
+desktop.ini
+
+### Python (separate git repo) ###
+python/
+
+### Spring Boot ###
+HELP.md
