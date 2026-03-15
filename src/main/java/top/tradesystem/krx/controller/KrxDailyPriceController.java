@@ -2,6 +2,7 @@ package top.tradesystem.krx.controller;
 
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 import top.tradesystem.krx.dto.BasDdRequest;
+import top.tradesystem.krx.dto.KrxIndexDailyPriceRow;
 import top.tradesystem.krx.dto.Market;
 import top.tradesystem.krx.service.KrxDailyPriceService;
 
@@ -25,16 +27,12 @@ public class KrxDailyPriceController {
         this.service = service;
     }
 
-    @PostMapping(value = "/kospi_dd_trd", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public Mono<Map<String, List<Map<String, String>>>> kospi(@Valid @RequestBody BasDdRequest request) {
-        return service.fetchIndexDailyPriceFromApi(request.basDd(), Market.KOSPI)
-                .map(rows -> Map.of("OutBlock_1", rows));
-    }
-
-    @PostMapping(value = "/kosdaq_dd_trd", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public Mono<Map<String, List<Map<String, String>>>> kosdaq(@Valid @RequestBody BasDdRequest request) {
-        return service.fetchIndexDailyPriceFromApi(request.basDd(), Market.KOSDAQ)
-                .map(rows -> Map.of("OutBlock_1", rows));
+    @PostMapping("/sync")
+    public Mono<KrxDailyPriceService.SyncResult> sync(
+            @RequestParam String basDd,
+            @RequestParam(defaultValue = "ALL") String market
+    ) {
+        return service.sync(basDd, market);
     }
 
     @PostMapping("/sync-range")
@@ -45,5 +43,25 @@ public class KrxDailyPriceController {
             @RequestParam(defaultValue = "0") long delayMs
     ) {
         return service.syncRange(from, to, market, delayMs);
+    }
+
+    @GetMapping("/find")
+    public Mono<List<KrxIndexDailyPriceRow>> find(
+            @RequestParam String basDd,
+            @RequestParam(defaultValue = "KOSPI") String market
+    ) {
+        return service.findByBasDdAndMarket(basDd, market);
+    }
+
+    @PostMapping(value = "/kospi_dd_trd", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public Mono<Map<String, List<Map<String, String>>>> kospi(@Valid @RequestBody BasDdRequest request) {
+        return service.fetchIndexDailyPriceFromApi(request.basDd(), Market.KOSPI)
+                .map(rows -> Map.of("OutBlock_1", rows));
+    }
+
+    @PostMapping(value = "/kosdaq_dd_trd", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public Mono<Map<String, List<Map<String, String>>>> kosdaq(@Valid @RequestBody BasDdRequest request) {
+        return service.fetchIndexDailyPriceFromApi(request.basDd(), Market.KOSDAQ)
+                .map(rows -> Map.of("OutBlock_1", rows));
     }
 }
