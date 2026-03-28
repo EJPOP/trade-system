@@ -141,10 +141,19 @@ public class KrxDailyPriceService extends BaseSyncService {
         );
     }
 
+    private int consecutive403Count = 0;
+
     private boolean isSkippable(Throwable ex, String message) {
         if (ex instanceof WebClientResponseException w && w.getStatusCode().value() == 403) {
+            consecutive403Count++;
+            // 연속 403이 5회 이상이면 인증키 만료로 판단 → skip 하지 않고 실패 처리
+            if (consecutive403Count >= 5) {
+                log.error("연속 403 {}회 — 인증키 만료 의심. 키를 확인하세요.", consecutive403Count);
+                return false;
+            }
             return true;
         }
+        consecutive403Count = 0;  // 403 아닌 응답이면 카운터 리셋
         String m = message == null ? "" : message.toLowerCase(Locale.ROOT);
         return m.contains("403 forbidden");
     }

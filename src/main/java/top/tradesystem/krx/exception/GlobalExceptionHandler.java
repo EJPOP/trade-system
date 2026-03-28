@@ -19,9 +19,26 @@ public class GlobalExceptionHandler {
         return pd;
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ProblemDetail handleBadRequest(IllegalArgumentException e) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
+        pd.setTitle("Bad Request");
+        return pd;
+    }
+
+    @ExceptionHandler(java.time.format.DateTimeParseException.class)
+    public ProblemDetail handleDateParse(java.time.format.DateTimeParseException e) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,
+                "Invalid date format: " + e.getParsedString());
+        pd.setTitle("Bad Request");
+        return pd;
+    }
+
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleAny(Exception e) {
-        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
+        // 내부 예외 메시지 노출 방지 — 로그에만 기록
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR,
+                "Internal server error");
         pd.setTitle("Server Error");
         return pd;
     }

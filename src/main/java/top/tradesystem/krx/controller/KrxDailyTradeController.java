@@ -32,6 +32,7 @@ public class KrxDailyTradeController {
             @RequestParam String basDd,
             @RequestParam(defaultValue = "ALL") String market
     ) {
+        validateBasDd(basDd);
         return service.sync(basDd, market);
     }
 
@@ -42,7 +43,15 @@ public class KrxDailyTradeController {
             @RequestParam(defaultValue = "ALL") String market,
             @RequestParam(defaultValue = "0") long delayMs
     ) {
+        validateBasDd(from);
+        validateBasDd(to);
         return service.syncRange(from, to, market, delayMs);
+    }
+
+    private void validateBasDd(String basDd) {
+        if (basDd == null || !basDd.matches("\\d{8}")) {
+            throw new IllegalArgumentException("basDd must be YYYYMMDD format: " + basDd);
+        }
     }
 
     @GetMapping("/find")
