@@ -10,6 +10,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 import top.tradesystem.krx.config.KrxProperties;
 import top.tradesystem.krx.dto.BasDdRequest;
+import top.tradesystem.krx.exception.KrxApiException;
 import top.tradesystem.krx.dto.Market;
 
 import java.nio.ByteBuffer;
@@ -81,10 +82,7 @@ public class KrxOpenApiClient {
         return postForOutBlock1List(path, new BasDdRequest(basDd));
     }
 
-    // Backward-compatible alias.
-    public Mono<List<Map<String, String>>> fetchDailyPrice(String basDd, Market market) {
-        return fetchDailyTrade(basDd, market);
-    }
+    // fetchDailyPrice alias 삭제 — fetchDailyTrade를 반환하여 혼동 유발 (미사용)
 
     private Mono<List<Map<String, String>>> postForOutBlock1List(String path, Object body) {
         return webClient
@@ -93,6 +91,13 @@ public class KrxOpenApiClient {
                 .accept(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()
+                .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(),
+                        response -> response.bodyToMono(String.class)
+                                .defaultIfEmpty("")
+                                .map(b -> new KrxApiException(
+                                        "KRX API " + response.statusCode().value() + " on " + path + ": " + b.substring(0, Math.min(b.length(), 200)),
+                                        response.statusCode().value()
+                                )))
                 .bodyToMono(byte[].class)
                 .map(this::decodeKrxJson)
                 .map(json -> parseOutBlock1OrArray(json, path, body));

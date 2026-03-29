@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Mono;
 import top.tradesystem.krx.dto.BasDdRequest;
 import top.tradesystem.krx.dto.KrxIndexDailyPriceRow;
@@ -32,7 +34,15 @@ public class KrxDailyPriceController {
             @RequestParam String basDd,
             @RequestParam(defaultValue = "ALL") String market
     ) {
-        return service.sync(basDd, market);
+        validateBasDd(basDd);
+        return service.sync(basDd, market)
+                .map(r -> {
+                    if (r.failed()) {
+                        throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                                "KRX sync failed: " + r.error());
+                    }
+                    return r;
+                });
     }
 
     @PostMapping("/sync-range")
@@ -42,7 +52,13 @@ public class KrxDailyPriceController {
             @RequestParam(defaultValue = "ALL") String market,
             @RequestParam(defaultValue = "0") long delayMs
     ) {
+        validateBasDd(from);
+        validateBasDd(to);
         return service.syncRange(from, to, market, delayMs);
+    }
+
+    private void validateBasDd(String basDd) {
+        top.tradesystem.krx.common.DateConstants.validateBasDd(basDd);
     }
 
     @GetMapping("/find")

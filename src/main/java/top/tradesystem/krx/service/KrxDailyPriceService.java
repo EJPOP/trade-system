@@ -52,11 +52,13 @@ public class KrxDailyPriceService extends BaseSyncService {
 
     public Mono<SyncResult> sync(String basDd, String market) {
         String m = normalizeMarket(market, "KOSPI");
+        // 요청별 403 카운터 생성 — Reactor 스레드 풀 재사용 안전
+        var counter = new java.util.concurrent.atomic.AtomicInteger(0);
 
         return switch (m) {
-            case "KOSPI" -> syncOneSafe(basDd, Market.KOSPI);
-            case "KOSDAQ" -> syncOneSafe(basDd, Market.KOSDAQ);
-            case "ALL" -> Mono.zip(syncOneSafe(basDd, Market.KOSPI), syncOneSafe(basDd, Market.KOSDAQ))
+            case "KOSPI" -> syncOneSafe(basDd, Market.KOSPI, counter);
+            case "KOSDAQ" -> syncOneSafe(basDd, Market.KOSDAQ, counter);
+            case "ALL" -> Mono.zip(syncOneSafe(basDd, Market.KOSPI, counter), syncOneSafe(basDd, Market.KOSDAQ, counter))
                     .map(t -> {
                         SyncResult kospi = t.getT1();
                         SyncResult kosdaq = t.getT2();
@@ -92,11 +94,32 @@ public class KrxDailyPriceService extends BaseSyncService {
                 .map(stats -> SyncResult.success(basDd, market.name(), stats[0], stats[1]));
     }
 
-    private Mono<SyncResult> syncOneSafe(String basDd, Market market) {
+    /** sync()와 동일하지만 외부 403 카운터를 사용. syncRange에서 호출. */
+    private Mono<SyncResult> syncWithCounter(String basDd, String market,
+                                              java.util.concurrent.atomic.AtomicInteger counter) {
+        String m = normalizeMarket(market, "KOSPI");
+        return switch (m) {
+            case "KOSPI" -> syncOneSafe(basDd, Market.KOSPI, counter);
+            case "KOSDAQ" -> syncOneSafe(basDd, Market.KOSDAQ, counter);
+            case "ALL" -> Mono.zip(syncOneSafe(basDd, Market.KOSPI, counter), syncOneSafe(basDd, Market.KOSDAQ, counter))
+                    .map(t -> new SyncResult(basDd, "ALL",
+                            t.getT1().saved() + t.getT2().saved(),
+                            t.getT1().fetchedRows() + t.getT2().fetchedRows(),
+                            t.getT1().upsertAffectedRows() + t.getT2().upsertAffectedRows(),
+                            t.getT1().failed() || t.getT2().failed(),
+                            t.getT1().skipped() || t.getT2().skipped(),
+                            mergeErrors(t.getT1().error(), t.getT2().error())));
+            default -> Mono.error(new IllegalArgumentException("market must be KOSPI|KOSDAQ|ALL"));
+        };
+    }
+
+    private Mono<SyncResult> syncOneSafe(String basDd, Market market,
+                                          java.util.concurrent.atomic.AtomicInteger counter403) {
         return syncOne(basDd, market)
+                .doOnNext(r -> counter403.set(0))  // 성공 시 403 카운터 리셋
                 .onErrorResume(ex -> {
                     String msg = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
-                    if (isSkippable(ex, msg)) {
+                    if (isSkippable(ex, msg, counter403)) {
                         log.info("idx sync skipped. basDd={}, market={}, message={}", basDd, market.name(), msg);
                         return Mono.just(SyncResult.skipped(basDd, market.name(), msg));
                     }
@@ -118,12 +141,14 @@ public class KrxDailyPriceService extends BaseSyncService {
 
         String m = normalizeMarket(market, "ALL");
         Duration perDayDelay = Duration.ofMillis(delayMs);
+        // 배치 범위 전체에서 공유하는 403 카운터 — 날짜별 리셋 방지
+        var rangeCounter = new java.util.concurrent.atomic.AtomicInteger(0);
 
         return validation.then(
                 generateDateRange(start, end)
                         .concatMap(dd ->
                                 Mono.delay(perDayDelay)
-                                        .then(sync(dd, m))
+                                        .then(syncWithCounter(dd, m, rangeCounter))
                         )
                         .collectList()
                         .map(list -> new RangeSyncResult(
@@ -141,19 +166,20 @@ public class KrxDailyPriceService extends BaseSyncService {
         );
     }
 
-    private int consecutive403Count = 0;
-
-    private boolean isSkippable(Throwable ex, String message) {
+    /**
+     * 403 누적 판정 — 배치 범위(syncRange) 단위로 카운터 관리.
+     * Reactor 스레드 풀 재사용 문제를 피하기 위해 Mono 체인 내부에서만 사용.
+     */
+    private boolean isSkippable(Throwable ex, String message, java.util.concurrent.atomic.AtomicInteger counter403) {
         if (ex instanceof WebClientResponseException w && w.getStatusCode().value() == 403) {
-            consecutive403Count++;
-            // 연속 403이 5회 이상이면 인증키 만료로 판단 → skip 하지 않고 실패 처리
-            if (consecutive403Count >= 5) {
-                log.error("연속 403 {}회 — 인증키 만료 의심. 키를 확인하세요.", consecutive403Count);
+            int count = counter403.incrementAndGet();
+            if (count >= 5) {
+                log.error("연속 403 {}회 — 인증키 만료 의심. 키를 확인하세요.", count);
                 return false;
             }
             return true;
         }
-        consecutive403Count = 0;  // 403 아닌 응답이면 카운터 리셋
+        counter403.set(0);  // 403 아닌 응답이면 카운터 리셋
         String m = message == null ? "" : message.toLowerCase(Locale.ROOT);
         return m.contains("403 forbidden");
     }

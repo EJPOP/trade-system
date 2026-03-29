@@ -29,6 +29,7 @@ public class KrxTickerMasterController {
             @RequestParam String basDd,
             @RequestParam(defaultValue = "KOSPI") String market
     ) {
+        validateBasDd(basDd);
         return syncService.sync(basDd, market);
     }
 
@@ -39,7 +40,13 @@ public class KrxTickerMasterController {
             @RequestParam(defaultValue = "ALL") String market,
             @RequestParam(defaultValue = "0") long delayMs
     ) {
+        validateBasDd(from);
+        validateBasDd(to);
         return syncService.syncRange(from, to, market, delayMs);
+    }
+
+    private void validateBasDd(String basDd) {
+        top.tradesystem.krx.common.DateConstants.validateBasDd(basDd);
     }
 
     @GetMapping(produces = JSON_UTF8)

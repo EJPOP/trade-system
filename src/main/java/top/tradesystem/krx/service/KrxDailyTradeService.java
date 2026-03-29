@@ -77,23 +77,17 @@ public class KrxDailyTradeService extends BaseSyncService {
     private Mono<SyncResult> syncOne(String basDd, Market market) {
         final String mk = market.name();
 
-        Mono<Boolean> alreadyExists = dbCall(() -> mapper.countByBasDdAndMarket(basDd, mk) > 0);
-
-        return alreadyExists.flatMap(exists -> {
-            if (exists) {
-                return Mono.just(new SyncResult(basDd, mk, 0, true));
-            }
-
-            return fetchDailyTradeFromApi(basDd, market)
-                    .map(rows -> toTradeRows(basDd, rows))
-                    .flatMap((List<KrxDailyTradeRow> toSave) ->
-                            dbCall(() -> {
-                                if (toSave == null || toSave.isEmpty()) return 0;
-                                return mapper.upsertBatch(toSave);
-                            })
-                    )
-                    .map(saved -> new SyncResult(basDd, mk, saved, false));
-        });
+        // 항상 upsert 수행 — 부분 적재 상태에서도 재동기화 가능
+        // (기존: count > 0이면 skip → 일부만 들어간 상태가 영구 고착)
+        return fetchDailyTradeFromApi(basDd, market)
+                .map(rows -> toTradeRows(basDd, rows))
+                .flatMap((List<KrxDailyTradeRow> toSave) ->
+                        dbCall(() -> {
+                            if (toSave == null || toSave.isEmpty()) return 0;
+                            return mapper.upsertBatch(toSave);
+                        })
+                )
+                .map(saved -> new SyncResult(basDd, mk, saved, false));
     }
 
     public Mono<RangeSyncResult> syncRange(String from, String to, String market) {

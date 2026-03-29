@@ -49,9 +49,7 @@ public class KrxDailyTradeController {
     }
 
     private void validateBasDd(String basDd) {
-        if (basDd == null || !basDd.matches("\\d{8}")) {
-            throw new IllegalArgumentException("basDd must be YYYYMMDD format: " + basDd);
-        }
+        top.tradesystem.krx.common.DateConstants.validateBasDd(basDd);
     }
 
     @GetMapping("/find")
