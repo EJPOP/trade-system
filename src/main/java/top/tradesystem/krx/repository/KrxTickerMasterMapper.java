@@ -12,4 +12,9 @@ public interface KrxTickerMasterMapper {
     List<KrxTickerMasterRow> findByMarket(@Param("market") String market);
 
     KrxTickerMasterRow findByCode(@Param("code") String code);
+
+    /**
+     * 거래량/거래대금 상위 종목 코드 조회 (전략용)
+     */
+    List<String> findTopLiquidSymbols(@Param("limit") int limit);
 }

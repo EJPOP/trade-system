@@ -37,6 +37,14 @@ krx:
   timeout-seconds: 30
   response-charset: MS949
 
+kis:
+  base-url: ${KIS_BASE_URL:https://openapi.koreainvestment.com:9443}
+  websocket-url: ${KIS_WS_URL:ws://ops.koreainvestment.com:21000}
+  app-key: ${KIS_APP_KEY}
+  app-secret: ${KIS_APP_SECRET}
+  account-no: ${KIS_ACCOUNT_NO}
+  token-cache-path: .kis_token_cache.json
+
 logging:
   level:
     top.tradesystem: DEBUG

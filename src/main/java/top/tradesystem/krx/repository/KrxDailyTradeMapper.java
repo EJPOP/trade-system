@@ -21,4 +21,9 @@ public interface KrxDailyTradeMapper {
             @Param("basDd") String basDd,
             @Param("code") String code
     );
+
+    /**
+     * 특정 종목의 과거 시세를 날짜순으로 조회 (백테스트용)
+     */
+    List<KrxDailyTradeRow> findBySymbolOrderByBasDd(@Param("symbol") String symbol);
 }

@@ -80,4 +80,12 @@
         AND mkt_nm = #{market}
     </select>
 
+    <select id="findBySymbolOrderByBasDd" resultType="top.tradesystem.krx.dto.KrxDailyTradeRow">
+        SELECT
+        <include refid="dailyTradeCols"/>
+        FROM krx_daily_trade
+        WHERE isu_cd = #{symbol}
+        ORDER BY bas_dd ASC
+    </select>
+
 </mapper>

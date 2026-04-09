@@ -26,6 +26,7 @@ dependencies {
     implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:4.0.1'
     // ✅ JDBC / MySQL
     implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    implementation 'io.github.cdimascio:dotenv-java:3.0.0' // ✅ .env 파일 로드용 추가
 
     runtimeOnly 'com.mysql:mysql-connector-j'
 

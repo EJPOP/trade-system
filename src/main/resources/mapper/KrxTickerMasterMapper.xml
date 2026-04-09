@@ -61,4 +61,12 @@
         WHERE code = #{code}
     </select>
 
+    <select id="findTopLiquidSymbols" resultType="string">
+        SELECT isu_cd
+        FROM krx_daily_trade
+        WHERE bas_dd = (SELECT MAX(bas_dd) FROM krx_daily_trade)
+        ORDER BY CAST(REPLACE(acc_trdval, ',', '') AS UNSIGNED) DESC
+        LIMIT #{limit}
+    </select>
+
 </mapper>
