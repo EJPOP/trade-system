@@ -1,7 +1,7 @@
 package top.tradesystem.krx.client;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper; // ✅ 추가
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -12,7 +12,6 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 import top.tradesystem.krx.config.KisProperties;
 import top.tradesystem.krx.service.TradingStrategyService;
 
-import javax.annotation.PostConstruct;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -21,20 +20,22 @@ public class KisWebSocketClient {
 
     private static final Logger log = LoggerFactory.getLogger(KisWebSocketClient.class);
     private final KisProperties props;
+    private final KisOpenApiClient apiClient;
     private final TradingStrategyService strategyService;
     private final ObjectMapper objectMapper;
 
-    public KisWebSocketClient(KisProperties props, TradingStrategyService strategyService, ObjectMapper objectMapper) {
+    public KisWebSocketClient(KisProperties props, KisOpenApiClient apiClient, TradingStrategyService strategyService, ObjectMapper objectMapper) {
         this.props = props;
+        this.apiClient = apiClient;
         this.strategyService = strategyService;
         this.objectMapper = objectMapper;
     }
 
     @PostConstruct
     public void connect() {
-        props.getWebSocketApprovalKey().subscribe(approvalKey -> {
+        apiClient.getWebSocketApprovalKey().subscribe(approvalKey -> {
             StandardWebSocketClient client = new StandardWebSocketClient();
-            client.doHandshake(new TextWebSocketHandler() {
+            client.execute(new TextWebSocketHandler() { // ✅ doHandshake 대신 execute 사용 (Spring 규격)
                 @Override
                 public void afterConnectionEstablished(WebSocketSession session) throws Exception {
                     log.info("Connected to KIS WebSocket. Approval Key: {}", approvalKey);
@@ -52,12 +53,10 @@ public class KisWebSocketClient {
                 protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
                     String payload = message.getPayload();
                     
-                    // 1. 암호화되지 않은 실시간 체결 데이터 (0: 실전, 1: 모의)
                     if (payload.startsWith("0") || payload.startsWith("1")) {
                         String[] parts = payload.split("\\|");
                         if (parts.length >= 4) {
                             String[] data = parts[3].split("\\^");
-                            // KIS 명세: 0:종목코드, 2:체결가, 3:전일대비부호, 7:체결량, 22:체결강도
                             String symbol = data[0];
                             long price = Long.parseLong(data[2]);
                             long volume = Long.parseLong(data[7]);

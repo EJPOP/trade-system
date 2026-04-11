@@ -86,8 +86,12 @@ public class KisOpenApiClient {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()
-                .bodyToMono(JsonNode.class)
-                .map(node -> node.get("approval_key").asText());
+                .bodyToMono(Map.class) // ✅ JsonNode 대신 Map 사용
+                .map(res -> {
+                    Object key = res.get("approval_key");
+                    if (key == null) throw new RuntimeException("Failed to get approval_key from KIS");
+                    return String.valueOf(key);
+                });
     }
 
     private Mono<String> ensureToken() {

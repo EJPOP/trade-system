@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import top.tradesystem.krx.client.KisOpenApiClient;
 
+import java.time.LocalTime;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service

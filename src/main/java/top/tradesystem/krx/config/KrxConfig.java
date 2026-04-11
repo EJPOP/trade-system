@@ -4,6 +4,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@EnableConfigurationProperties({KrxProperties.class, KisProperties.class, TradingProperties.class})
+@EnableConfigurationProperties(KrxProperties.class)
 public class KrxConfig {
 }
