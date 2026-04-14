@@ -12,9 +12,9 @@ import java.util.List;
 public class BacktestService {
 
     private static final Logger log = LoggerFactory.getLogger(BacktestService.class);
-    private final KrxDailyTradeMapper dailyTradeMapper;
+    private final top.tradesystem.krx.trading.repository.TradingMapper dailyTradeMapper; // ✅ 신규 매퍼로 교체
 
-    public BacktestService(KrxDailyTradeMapper dailyTradeMapper) {
+    public BacktestService(top.tradesystem.krx.trading.repository.TradingMapper dailyTradeMapper) {
         this.dailyTradeMapper = dailyTradeMapper;
     }
 

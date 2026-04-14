@@ -6,7 +6,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-@MapperScan("top.tradesystem.krx.repository")
+@MapperScan({"top.tradesystem.krx.repository", "top.tradesystem.krx.trading.repository"}) // ✅ 신규 패키지 추가
 public class TradeSystemApplication {
     public static void main(String[] args) {
         // .env 파일 로드하여 시스템 환경 변수로 등록

@@ -1,6 +1,6 @@
 package top.tradesystem.krx.client;
 
-import com.fasterxml.jackson.databind.ObjectMapper; // ✅ 추가
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,14 +35,14 @@ public class KisWebSocketClient {
     public void connect() {
         apiClient.getWebSocketApprovalKey().subscribe(approvalKey -> {
             StandardWebSocketClient client = new StandardWebSocketClient();
-            client.execute(new TextWebSocketHandler() { // ✅ doHandshake 대신 execute 사용 (Spring 규격)
+            client.execute(new TextWebSocketHandler() {
                 @Override
                 public void afterConnectionEstablished(WebSocketSession session) throws Exception {
                     log.info("Connected to KIS WebSocket. Approval Key: {}", approvalKey);
-                    
                     strategyService.getTargetSymbols(20).forEach(symbol -> {
                         try {
                             subscribeTick(session, symbol, approvalKey);
+                            subscribeOrderbook(session, symbol, approvalKey);
                         } catch (Exception e) {
                             log.error("Subscription failed for {}", symbol);
                         }
@@ -52,17 +52,16 @@ public class KisWebSocketClient {
                 @Override
                 protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
                     String payload = message.getPayload();
-                    
                     if (payload.startsWith("0") || payload.startsWith("1")) {
                         String[] parts = payload.split("\\|");
                         if (parts.length >= 4) {
+                            String trId = parts[1];
                             String[] data = parts[3].split("\\^");
-                            String symbol = data[0];
-                            long price = Long.parseLong(data[2]);
-                            long volume = Long.parseLong(data[7]);
-                            double strength = Double.parseDouble(data[22]);
-                            
-                            strategyService.processRealtimeTick(symbol, price, volume, strength);
+                            if ("H0STCNT0".equals(trId)) {
+                                strategyService.processRealtimeTick(data[0], Long.parseLong(data[2]), Long.parseLong(data[7]), Double.parseDouble(data[22]));
+                            } else if ("H0STASP0".equals(trId)) {
+                                strategyService.processRealtimeOFI(data[0], Long.parseLong(data[23]), Long.parseLong(data[12]));
+                            }
                         }
                     } else if (payload.contains("PINGPONG")) {
                         session.sendMessage(new TextMessage("PONG"));
@@ -73,22 +72,31 @@ public class KisWebSocketClient {
     }
 
     private void subscribeTick(WebSocketSession session, String symbol, String approvalKey) throws Exception {
+        Map<String, Object> req = createSubReq("H0STCNT0", symbol, approvalKey);
+        session.sendMessage(new TextMessage(objectMapper.writeValueAsString(req)));
+    }
+
+    private void subscribeOrderbook(WebSocketSession session, String symbol, String approvalKey) throws Exception {
+        Map<String, Object> req = createSubReq("H0STASP0", symbol, approvalKey);
+        session.sendMessage(new TextMessage(objectMapper.writeValueAsString(req)));
+    }
+
+    private Map<String, Object> createSubReq(String trId, String symbol, String approvalKey) {
         Map<String, Object> req = new HashMap<>();
         Map<String, Object> header = new HashMap<>();
         header.put("approval_key", approvalKey);
         header.put("custtype", "P");
-        header.put("tr_type", "1"); // 1: 등록, 2: 해제
+        header.put("tr_type", "1");
         header.put("content-type", "utf-8");
 
         Map<String, Object> body = new HashMap<>();
         Map<String, Object> input = new HashMap<>();
-        input.put("tr_id", "H0STCNT0"); // 주식체결가
+        input.put("tr_id", trId);
         input.put("tr_key", symbol);
         body.put("input", input);
 
         req.put("header", header);
         req.put("body", body);
-
-        session.sendMessage(new TextMessage(objectMapper.writeValueAsString(req)));
+        return req;
     }
 }

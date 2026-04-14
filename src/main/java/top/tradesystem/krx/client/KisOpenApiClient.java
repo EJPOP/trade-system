@@ -1,7 +1,6 @@
 package top.tradesystem.krx.client;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,8 +12,6 @@ import top.tradesystem.krx.config.KisProperties;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -34,17 +31,8 @@ public class KisOpenApiClient {
         loadTokenFromFile();
     }
 
-    /**
-     * 주문 실행 (매수/매도)
-     * @param isBuy true: 매수, false: 매도
-     * @param symbol 종목코드 (6자리)
-     * @param qty 수량
-     * @param price 가격 (0이면 시장가, 프리마켓/NXT에서는 실제 가격 입력 필요)
-     * @param ordDvsn 주문구분 (00: 지정가, 01: 시장가)
-     */
     public Mono<String> postOrder(boolean isBuy, String symbol, int qty, long price, String ordDvsn) {
         String trId = isBuy ? "TTTC0841U" : "TTTC0802U"; 
-        
         Map<String, Object> body = new HashMap<>();
         body.put("CANO", props.accountNo().substring(0, 8));
         body.put("ACNT_PRDT_CD", props.accountNo().substring(8));
@@ -67,14 +55,10 @@ public class KisOpenApiClient {
                         .doOnNext(res -> log.info("Order Response: {}", res)));
     }
 
-    // 기존 하위 호환을 위한 오버로딩
     public Mono<String> postOrder(boolean isBuy, String symbol, int qty, long price) {
         return postOrder(isBuy, symbol, qty, price, price == 0 ? "01" : "00");
     }
 
-    /**
-     * 웹소켓 접속을 위한 실시간 인증키(approval_key) 발급
-     */
     public Mono<String> getWebSocketApprovalKey() {
         Map<String, String> body = new HashMap<>();
         body.put("grant_type", "client_credentials");
@@ -86,17 +70,12 @@ public class KisOpenApiClient {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()
-                .bodyToMono(Map.class) // ✅ JsonNode 대신 Map 사용
-                .map(res -> {
-                    Object key = res.get("approval_key");
-                    if (key == null) throw new RuntimeException("Failed to get approval_key from KIS");
-                    return String.valueOf(key);
-                });
+                .bodyToMono(Map.class)
+                .map(res -> String.valueOf(res.get("approval_key")));
     }
 
     private Mono<String> ensureToken() {
         if (accessToken != null) return Mono.just(accessToken);
-        
         Map<String, String> body = new HashMap<>();
         body.put("grant_type", "client_credentials");
         body.put("appkey", props.appKey());
